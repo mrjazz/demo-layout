@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Backpacking Problem</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      margin: 20px;
+      background: #1a1a2e;
+      color: #eee;
+    }
+    .config-panel {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+      padding: 12px;
+      background: #16213e;
+      border-radius: 8px;
+    }
+    .config-panel label { font-weight: 500; }
+    .config-panel input {
+      width: 70px;
+      padding: 6px 10px;
+      border: 1px solid #0f3460;
+      border-radius: 4px;
+      background: #0f3460;
+      color: #eee;
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    button:active { transform: translateY(0); }
+    .btn-add { background: #4ade80; color: #0f172a; }
+    .btn-remove { background: #f87171; color: #0f172a; }
+    .btn-optimize { background: #60a5fa; color: #0f172a; }
+    .btn-apply { background: #a78bfa; color: #0f172a; }
+    .canvas-wrap {
+      display: inline-block;
+      padding: 2px;
+      background: #0f3460;
+      border-radius: 8px;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1);
+    }
+    #canvas {
+      display: block;
+      background: #0f172a;
+      border-radius: 6px;
+      cursor: crosshair;
+    }
+    .status {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <div class="config-panel">
+    <label>Width:</label>
+    <input type="number" id="configWidth" value="500" min="100" max="1200">
+    <label>Height:</label>
+    <input type="number" id="configHeight" value="500" min="100" max="1200">
+    <button class="btn-apply" id="btnApply">Apply</button>
+  </div>
+
+  <div class="actions">
+    <button class="btn-add" id="btnAdd">Add Element</button>
+    <button class="btn-remove" id="btnRemove">Remove Active</button>
+    <button class="btn-optimize" id="btnOptimize">Optimize</button>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="canvas" width="500" height="500"></canvas>
+  </div>
+
+  <div class="status" id="status">Click Add Element to create squares. Click an element to select it, then drag the corner handle to resize.</div>
+
+  <script>
+    const state = {
+      canvasWidth: 500,
+      canvasHeight: 500,
+      elements: [],
+      activeElementId: null,
+      nextId: 1,
+      resizeMode: false,
+      resizeStartClientX: 0,
+      resizeStartClientY: 0,
+      resizeStartSize: 0
+    };
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const HANDLE_SIZE = 10;
+    const MIN_SIZE = 20;
+
+    function toCanvasCoords(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (clientX - rect.left) * (canvas.width / rect.width),
+        y: (clientY - rect.top) * (canvas.height / rect.height)
+      };
+    }
+
+    function getElementAt(clientX, clientY) {
+      const { x: mx, y: my } = toCanvasCoords(clientX, clientY);
+      for (let i = state.elements.length - 1; i >= 0; i--) {
+        const el = state.elements[i];
+        if (mx >= el.x && mx <= el.x + el.size && my >= el.y && my <= el.y + el.size) {
+          return el;
+        }
+      }
+      return null;
+    }
+
+    function isOverResizeHandle(el, clientX, clientY) {
+      const { x: mx, y: my } = toCanvasCoords(clientX, clientY);
+      const hx = el.x + el.size;
+      const hy = el.y + el.size;
+      return mx >= hx - HANDLE_SIZE && mx <= hx + HANDLE_SIZE &&
+             my >= hy - HANDLE_SIZE && my <= hy + HANDLE_SIZE;
+    }
+
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0, 0, canvas.width, canvas.height);
+
+      for (const el of state.elements) {
+        const isActive = el.id === state.activeElementId;
+        ctx.fillStyle = isActive ? '#3b82f6' : '#475569';
+        ctx.fillRect(el.x, el.y, el.size, el.size);
+
+        ctx.strokeStyle = isActive ? '#60a5fa' : '#64748b';
+        ctx.lineWidth = isActive ? 3 : 1;
+        ctx.strokeRect(el.x, el.y, el.size, el.size);
+
+        if (isActive) {
+          ctx.fillStyle = '#93c5fd';
+          ctx.fillRect(el.x + el.size - HANDLE_SIZE, el.y + el.size - HANDLE_SIZE, HANDLE_SIZE, HANDLE_SIZE);
+          ctx.strokeRect(el.x + el.size - HANDLE_SIZE, el.y + el.size - HANDLE_SIZE, HANDLE_SIZE, HANDLE_SIZE);
+        }
+      }
+    }
+
+    function updateStatus(msg) {
+      document.getElementById('status').textContent = msg;
+    }
+
+    function addElement() {
+      const size = 50;
+      const padding = 10;
+      const col = state.elements.length % 8;
+      const row = Math.floor(state.elements.length / 8);
+      const x = padding + col * (size + padding);
+      const y = padding + row * (size + padding);
+
+      const el = { id: state.nextId++, x, y, size };
+      state.elements.push(el);
+      state.activeElementId = el.id;
+      render();
+      updateStatus(`Added element ${el.id}. Click to select, drag corner to resize.`);
+    }
+
+    function removeActive() {
+      if (!state.activeElementId) {
+        updateStatus('No element selected. Click an element first.');
+        return;
+      }
+      state.elements = state.elements.filter(e => e.id !== state.activeElementId);
+      state.activeElementId = null;
+      render();
+      updateStatus('Element removed.');
+    }
+
+    function optimize() {
+      if (state.elements.length === 0) {
+        updateStatus('No elements to optimize.');
+        return;
+      }
+
+      const sorted = [...state.elements].sort((a, b) => b.size - a.size);
+      let currentX = state.canvasWidth;
+      let currentY = 0;
+      let rowHeight = 0;
+      let overflow = false;
+
+      for (const el of sorted) {
+        if (currentX - el.size < 0) {
+          currentX = state.canvasWidth;
+          currentY += rowHeight;
+          rowHeight = 0;
+        }
+        el.x = currentX - el.size;
+        el.y = currentY;
+        currentX -= el.size;
+        rowHeight = Math.max(rowHeight, el.size);
+
+        if (currentY + el.size > state.canvasHeight) {
+          overflow = true;
+        }
+      }
+
+      render();
+      updateStatus(overflow
+        ? 'Optimized. Warning: some elements extend below canvas.'
+        : 'Optimized layout from top-right.');
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+      const el = getElementAt(e.clientX, e.clientY);
+      if (el && el.id === state.activeElementId && isOverResizeHandle(el, e.clientX, e.clientY)) {
+        state.resizeMode = true;
+        state.resizeStartClientX = e.clientX;
+        state.resizeStartClientY = e.clientY;
+        state.resizeStartSize = el.size;
+      } else if (el) {
+        state.activeElementId = el.id;
+        state.resizeMode = false;
+        render();
+        updateStatus(`Selected element ${el.id} (${el.size}×${el.size}). Drag corner to resize.`);
+      } else {
+        state.activeElementId = null;
+        state.resizeMode = false;
+        render();
+        updateStatus('Click Add Element or select an existing element.');
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!state.resizeMode || !state.activeElementId) return;
+      const el = state.elements.find(x => x.id === state.activeElementId);
+      if (!el) return;
+
+      const start = toCanvasCoords(state.resizeStartClientX, state.resizeStartClientY);
+      const curr = toCanvasCoords(e.clientX, e.clientY);
+      const dx = curr.x - start.x;
+      const dy = curr.y - start.y;
+      const delta = Math.round(Math.max(dx, dy));
+      el.size = Math.max(MIN_SIZE, state.resizeStartSize + delta);
+      render();
+    });
+
+    window.addEventListener('mouseup', () => {
+      state.resizeMode = false;
+    });
+
+    document.getElementById('btnAdd').addEventListener('click', addElement);
+    document.getElementById('btnRemove').addEventListener('click', removeActive);
+    document.getElementById('btnOptimize').addEventListener('click', optimize);
+
+    document.getElementById('btnApply').addEventListener('click', () => {
+      const w = Math.max(100, parseInt(document.getElementById('configWidth').value, 10) || 500);
+      const h = Math.max(100, parseInt(document.getElementById('configHeight').value, 10) || 500);
+      state.canvasWidth = w;
+      state.canvasHeight = h;
+      canvas.width = w;
+      canvas.height = h;
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      render();
+      updateStatus(`Canvas resized to ${w}×${h}.`);
+    });
+
+    render();
+  </script>
+</body>
+</html>
