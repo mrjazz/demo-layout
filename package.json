@@ -1,0 +1,12 @@
+{
+  "name": "backpacking-problem",
+  "version": "1.0.0",
+  "description": "2D bin packing webapp",
+  "scripts": {
+    "build": "terser js/app.js -o js/app.min.js -c -m",
+    "build:dist": "npm run build && node scripts/build-dist.js"
+  },
+  "devDependencies": {
+    "terser": "^5.36.0"
+  }
+}
