@@ -32,7 +32,7 @@
     }
     .main-layout {
       display: flex;
-      gap: 20px;
+      gap: 50px;
       align-items: flex-start;
     }
     .elements-panel {
@@ -64,6 +64,12 @@
     }
     .element-item:hover { border-color: #334155; }
     .element-item.active { border-color: #60a5fa; }
+    .element-item .el-num {
+      font-weight: 700;
+      font-size: 14px;
+      min-width: 20px;
+      color: #94a3b8;
+    }
     .element-item .swatch {
       width: 32px;
       height: 32px;
@@ -242,6 +248,7 @@
       }
       list.innerHTML = state.elements.map(el => `
         <div class="element-item ${el.id === state.activeElementId ? 'active' : ''}" data-id="${el.id}">
+          <span class="el-num">${el.id}</span>
           <div class="swatch" style="background: ${el.color}"></div>
           <div class="dims">
             <input type="number" data-id="${el.id}" data-dim="w" value="${el.width}" min="${MIN_DIM}">
@@ -300,6 +307,17 @@
         ctx.fillStyle = el.color;
         ctx.fillRect(el.x, el.y, el.width, el.height);
 
+        ctx.font = 'bold 14px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const cx = el.x + el.width / 2;
+        const cy = el.y + el.height / 2;
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+        ctx.lineWidth = 2;
+        ctx.strokeText(String(el.id), cx, cy);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(String(el.id), cx, cy);
+
         ctx.strokeStyle = isActive ? '#60a5fa' : '#64748b';
         ctx.lineWidth = isActive ? 3 : 1;
         ctx.strokeRect(el.x, el.y, el.width, el.height);
@@ -346,30 +364,65 @@
       }
 
       const sorted = [...state.elements].sort((a, b) => (b.width * b.height) - (a.width * a.height));
-      let currentX = 0;
-      let currentY = 0;
-      let rowHeight = 0;
+      const placed = [];
       let overflow = false;
 
-      for (const el of sorted) {
-        if (currentX + el.width > state.canvasWidth) {
-          currentX = 0;
-          currentY += rowHeight;
-          rowHeight = 0;
-        }
-        el.x = currentX;
-        el.y = currentY;
-        el.placed = true;
-        currentX += el.width;
-        rowHeight = Math.max(rowHeight, el.height);
+      function overlaps(a, b) {
+        return a.x < b.x + b.width && a.x + a.width > b.x &&
+               a.y < b.y + b.height && a.y + a.height > b.y;
+      }
 
-        if (currentY + el.height > state.canvasHeight) overflow = true;
+      for (const el of sorted) {
+        const w = el.width;
+        const h = el.height;
+
+        const xCandidates = [0];
+        const yCandidates = [0];
+        for (const p of placed) {
+          xCandidates.push(p.x + p.width);
+          yCandidates.push(p.y + p.height);
+        }
+
+        let bestX = -1;
+        let bestY = -1;
+        for (const x of xCandidates) {
+          for (const y of yCandidates) {
+            if (x + w > state.canvasWidth || y + h > state.canvasHeight) continue;
+
+            const candidate = { x, y, width: w, height: h };
+            let collision = false;
+            for (const p of placed) {
+              if (overlaps(candidate, p)) {
+                collision = true;
+                break;
+              }
+            }
+            if (collision) continue;
+
+            if (bestX < 0 || y < bestY || (y === bestY && x < bestX)) {
+              bestX = x;
+              bestY = y;
+            }
+          }
+        }
+
+        if (bestX < 0) {
+          const maxY = placed.length ? Math.max(...placed.map(p => p.y + p.height)) : 0;
+          bestX = 0;
+          bestY = maxY;
+          overflow = true;
+        }
+
+        el.x = bestX;
+        el.y = bestY;
+        el.placed = true;
+        placed.push({ x: el.x, y: el.y, width: el.width, height: el.height });
       }
 
       render();
       updateStatus(overflow
         ? 'Optimized. Warning: some elements extend below canvas.'
-        : 'Optimized layout from top-left.');
+        : 'Optimized layout (bottom-left, minimal gaps).');
     }
 
     canvas.addEventListener('mousedown', (e) => {
