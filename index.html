@@ -135,6 +135,8 @@
       background: #0f3460;
       border-radius: 8px;
       box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1);
+      max-width: 100%;
+      overflow: auto;
     }
     #canvas {
       display: block;
@@ -294,8 +296,36 @@
       });
     }
 
+    function updateCanvasSize() {
+      const placed = state.elements.filter(e => e.placed);
+      if (placed.length === 0) {
+        canvas.width = state.canvasWidth;
+        canvas.height = state.canvasHeight;
+      } else {
+        let maxX = 0, maxY = 0;
+        for (const el of placed) {
+          maxX = Math.max(maxX, el.x + el.width);
+          maxY = Math.max(maxY, el.y + el.height);
+        }
+        canvas.width = Math.max(state.canvasWidth, maxX);
+        canvas.height = Math.max(state.canvasHeight, maxY);
+      }
+      canvas.style.width = canvas.width + 'px';
+      canvas.style.height = canvas.height + 'px';
+    }
+
     function render() {
+      updateCanvasSize();
+
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (canvas.width > state.canvasWidth || canvas.height > state.canvasHeight) {
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = '#64748b';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(0, 0, state.canvasWidth, state.canvasHeight);
+        ctx.setLineDash([]);
+      }
 
       ctx.strokeStyle = '#334155';
       ctx.lineWidth = 1;
